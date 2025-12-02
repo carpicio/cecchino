@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="Optimizer V66", page_icon="🧮", layout="wide")
-st.title("🧮 Strategy Optimizer (V66 - Analisi Novembre)")
+st.set_page_config(page_title="Optimizer V67", page_icon="🧮", layout="wide")
+st.title("🧮 Strategy Optimizer (V67 - Fix Formattazione)")
 st.markdown("---")
 
 # --- FUNZIONI DI CALCOLO ---
@@ -61,7 +60,7 @@ def load_data(file):
         return df.dropna(subset=['cotaa', 'cotad', 'Real_Res']), None
     except Exception as e: return None, str(e)
 
-# --- MOTORE DI SIMULAZIONE MASSIVA ---
+# --- MOTORE DI SIMULAZIONE ---
 def run_optimization(df, base_hfa, use_dyn):
     results = []
     
@@ -89,10 +88,8 @@ def run_optimization(df, base_hfa, use_dyn):
         ev1 = (row['cotaa'] * fin1) - 1
         ev2 = (row['cotad'] * fin2) - 1
         
-        # 3. Registra dati per analisi
-        # PNL se avessimo giocato 1
+        # 3. PNL
         pnl_1 = (row['cotaa'] - 1) if row['Real_Res'] == '1' else -1
-        # PNL se avessimo giocato 2
         pnl_2 = (row['cotad'] - 1) if row['Real_Res'] == '2' else -1
         
         results.append({
@@ -121,16 +118,13 @@ if uploaded:
     if df is not None and not df.empty:
         st.success(f"Caricate {len(df)} partite con risultati.")
         
-        # Esegui calcoli su tutto il dataset
         sim_data = run_optimization(df, base_hfa, use_dyn)
         
-        tab1, tab2, tab3 = st.tabs(["📉 Perché perdiamo?", "🔍 DIAGNOSTICA (Dove sono i soldi?)", "🏆 Top Campionati"])
+        tab1, tab2, tab3 = st.tabs(["📉 Perché perdiamo?", "🔍 HEATMAP (Diagnostica)", "🏆 Top Campionati"])
         
         with tab1:
-            st.subheader("Performance Attuale (Strategia Cecchino)")
-            # Simula la strategia attuale
-            # Filtri attuali: EV > 4%, Quote 1.50-4.00
-            
+            st.subheader("Performance Attuale")
+            # Simulazione Strategia Cecchino Standard
             mask_away = (sim_data['EV_2'] > 4.0) & (sim_data['Odds_2'].between(1.70, 3.50))
             mask_home = (sim_data['EV_1'] > 4.0) & (sim_data['Odds_1'].between(1.50, 2.50))
             
@@ -138,45 +132,48 @@ if uploaded:
             profit_home = sim_data[mask_home]['PNL_1'].sum()
             
             c1, c2 = st.columns(2)
-            c1.metric("Risultato Strategia AWAY (2)", f"{profit_away:.2f} u", delta_color="normal")
-            c2.metric("Risultato Strategia HOME (1)", f"{profit_home:.2f} u", delta_color="normal")
+            c1.metric("Strategia AWAY (2)", f"{profit_away:.2f} u")
+            c2.metric("Strategia HOME (1)", f"{profit_home:.2f} u")
             
             if profit_away < 0:
-                st.error("La strategia AWAY sta perdendo. Probabilmente stiamo sopravvalutando le squadre ospiti.")
-            
+                st.error("⚠️ La strategia AWAY è in perdita. Controlla il Tab 'Heatmap' per vedere quali quote ci stanno facendo perdere soldi.")
+
         with tab2:
-            st.subheader("Analisi 'Heatmap': Dove si guadagna davvero?")
-            st.write("Ho diviso le partite in fasce di quota. Vediamo quali fasce sono in verde.")
+            st.subheader("Analisi: Quali quote evitare?")
+            st.info("Le barre ROSSE verso il basso indicano dove stiamo perdendo soldi. Le VERDI dove vinciamo.")
             
-            # Crea fasce di quota
             bins = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 10.0]
             labels = ['1.0-1.5', '1.5-2.0', '2.0-2.5', '2.5-3.0', '3.0-4.0', '4.0+']
             
             sim_data['Odds_Bin_1'] = pd.cut(sim_data['Odds_1'], bins=bins, labels=labels)
             sim_data['Odds_Bin_2'] = pd.cut(sim_data['Odds_2'], bins=bins, labels=labels)
             
-            # Calcola ROI per ogni fascia (solo se EV positivo)
-            # Analisi HOME
-            st.write("#### 🏠 Rendimento Puntate CASA (1) con EV > 2%")
-            df_h = sim_data[sim_data['EV_1'] > 2.0].groupby('Odds_Bin_1')['PNL_1'].sum().reset_index()
+            st.write("#### 🏠 Rendimento Puntate CASA (1) (EV > 2%)")
+            df_h = sim_data[sim_data['EV_1'] > 2.0].groupby('Odds_Bin_1', observed=False)['PNL_1'].sum().reset_index()
             st.bar_chart(df_h.set_index('Odds_Bin_1'))
             
-            # Analisi AWAY
-            st.write("#### ✈️ Rendimento Puntate OSPITE (2) con EV > 2%")
-            df_a = sim_data[sim_data['EV_2'] > 2.0].groupby('Odds_Bin_2')['PNL_2'].sum().reset_index()
+            st.write("#### ✈️ Rendimento Puntate OSPITE (2) (EV > 2%)")
+            df_a = sim_data[sim_data['EV_2'] > 2.0].groupby('Odds_Bin_2', observed=False)['PNL_2'].sum().reset_index()
             st.bar_chart(df_a.set_index('Odds_Bin_2'))
-            
-            st.info("💡 **INTERPRETAZIONE:** Guarda le barre che vanno verso l'alto. Quelle sono le fasce di quota dove il tuo modello funziona. Se vedi barre rosse verso il basso tra 2.5 e 3.0, significa che devi SMETTERE di scommettere su quelle quote.")
 
         with tab3:
             st.subheader("Quali campionati portano profitto?")
-            # Raggruppa per campionato
-            league_perf = sim_data.groupby('League')[['PNL_1', 'PNL_2']].sum().reset_index()
-            league_perf['Total'] = league_perf['PNL_1'] + league_perf['PNL_2']
-            league_perf = league_perf.sort_values('Total', ascending=False).head(15)
-            
-            st.dataframe(league_perf.style.format("{:.2f}"))
-            st.write("Questi sono i campionati dove il modello ha 'letto' meglio le partite a Novembre.")
+            if not sim_data.empty:
+                league_perf = sim_data.groupby('League')[['PNL_1', 'PNL_2']].sum().reset_index()
+                league_perf['Total'] = league_perf['PNL_1'] + league_perf['PNL_2']
+                league_perf = league_perf.sort_values('Total', ascending=False).head(20)
+                
+                # FIX: Formattiamo solo le colonne numeriche
+                st.dataframe(
+                    league_perf.style.format({
+                        'PNL_1': "{:.2f}", 
+                        'PNL_2': "{:.2f}", 
+                        'Total': "{:.2f}"
+                    }),
+                    use_container_width=True
+                )
+            else:
+                st.warning("Nessun dato disponibile.")
 
     else:
-        st.error(f"Errore lettura file: {err}")
+        st.error(f"Errore: {err}")

@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="Sniper Bet V63", page_icon="🎯", layout="wide")
-st.title("🎯 Value Bet Sniper (V63)")
+st.set_page_config(page_title="Sniper Bet V64", page_icon="🎯", layout="wide")
+st.title("🎯 Value Bet Sniper (V64 - Fix Novembre)")
 st.markdown("---")
 
 # --- CORE LOGIC ---
@@ -38,11 +38,16 @@ def calc_row(row, base_hfa, dyn):
         ox = to_f(row.get('cotae', 0))
         o2 = to_f(row.get('cotad', 0))
         
-        # HFA Dinamico
+        # HFA Dinamico (Fix Nomi Colonne)
         curr_hfa = base_hfa
         if dyn:
-            r1 = row.get('Place 1a'); r2 = row.get('Place 2d')
+            # Cerca tutte le varianti possibili del nome colonna
+            r1 = row.get('place1a') 
+            if pd.isna(r1): r1 = row.get('Place 1a')
             if pd.isna(r1): r1 = row.get('place 1a')
+            
+            r2 = row.get('place2d')
+            if pd.isna(r2): r2 = row.get('Place 2d')
             if pd.isna(r2): r2 = row.get('place 2d')
             
             # Logica: Se ospite (r2) è molto meglio di casa (r1), riduci HFA
@@ -66,20 +71,23 @@ def calc_row(row, base_hfa, dyn):
         ev1 = (o1 * fin1) - 1
         ev2 = (o2 * fin2) - 1
         
-        res['EV_1'] = round(ev1 * 100, 2) # Percentuale
+        # Salva in percentuale per visualizzazione
+        res['EV_1'] = round(ev1 * 100, 2)
         res['EV_2'] = round(ev2 * 100, 2)
         
-        # --- LOGICA CECCHINO (SEGNALI) ---
+        # --- LOGICA CECCHINO (FIX PERCENTUALE) ---
+        # Usiamo ev2 * 100 per confrontare con 4.0 (4%)
+        
         # Strategia Ospite (Away Value)
-        if ev2 > 4.0 and 1.70 <= o2 <= 3.50:
+        if (ev2 * 100) > 4.0 and 1.70 <= o2 <= 3.50:
             res['Signal'] = '💎 AWAY'
-        elif ev2 > 1.5 and 1.50 <= o2 <= 4.00:
+        elif (ev2 * 100) > 1.5 and 1.50 <= o2 <= 4.00:
             res['Signal'] = '✅ VALUE 2'
             
         # Strategia Casa (Home Value)
-        elif ev1 > 4.0 and 1.50 <= o1 <= 2.50:
+        elif (ev1 * 100) > 4.0 and 1.50 <= o1 <= 2.50:
             res['Signal'] = '💎 HOME'
-        elif ev1 > 1.5 and 1.40 <= o1 <= 3.00:
+        elif (ev1 * 100) > 1.5 and 1.40 <= o1 <= 3.00:
             res['Signal'] = '✅ VALUE 1'
 
     except: pass
@@ -88,7 +96,8 @@ def calc_row(row, base_hfa, dyn):
 @st.cache_data(ttl=0)
 def load_file(file, hfa, dyn):
     try:
-        df = pd.read_csv(file, sep=None, encoding='latin1', on_bad_lines='skip', engine='python')
+        # Forza separatore punto e virgola per il tuo file
+        df = pd.read_csv(file, sep=';', encoding='latin1', on_bad_lines='skip', engine='python')
         df.columns = df.columns.str.strip()
         # Mapping flessibile
         ren = {
@@ -120,15 +129,15 @@ if uploaded:
         # Filtro Sniper
         sniper_df = df[df['Signal'] != 'SKIP'].copy()
         
-        # Ordina: Prima i Diamanti, poi il Valore
-        sniper_df['SortOrder'] = sniper_df['Signal'].map({'💎 AWAY': 1, '💎 HOME': 2, '✅ VALUE 2': 3, '✅ VALUE 1': 4})
-        sniper_df = sniper_df.sort_values('SortOrder')
-        
-        st.subheader(f"🎯 Trovate {len(sniper_df)} Occasioni su {len(df)} Partite")
-        
         if not sniper_df.empty:
+            # Ordina: Prima i Diamanti, poi il Valore
+            sniper_df['SortOrder'] = sniper_df['Signal'].map({'💎 AWAY': 1, '💎 HOME': 2, '✅ VALUE 2': 3, '✅ VALUE 1': 4})
+            sniper_df = sniper_df.sort_values('SortOrder')
+            
+            st.subheader(f"🎯 Trovate {len(sniper_df)} Occasioni su {len(df)} Partite")
+            
             # Tabella Semplificata per Operare
-            cols_view = ['Signal', 'txtechipa1', 'txtechipa2', 'HFA', 'cotaa', 'cotad', 'EV_1', 'EV_2']
+            cols_view = ['Signal', 'datameci', 'league', 'txtechipa1', 'txtechipa2', 'HFA', 'cotaa', 'cotad', 'EV_1', 'EV_2']
             final_cols = [c for c in cols_view if c in sniper_df.columns]
             
             st.dataframe(
@@ -136,10 +145,10 @@ if uploaded:
                     lambda x: 'background-color: #d4edda; color: green' if '💎' in str(x) else '', subset=['Signal']
                 ),
                 use_container_width=True,
-                height=500
+                height=600
             )
         else:
-            st.info("Nessuna occasione '💎' trovata con i parametri attuali. Il mercato è efficiente oggi.")
+            st.info(f"Analizzate {len(df)} partite, ma nessuna occasione '💎' trovata con i parametri attuali.")
             
         st.markdown("---")
         with st.expander("📂 Vedi tutte le partite (Dati Completi)"):
